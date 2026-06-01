@@ -89,6 +89,25 @@ fn hook_context(args: &cli::Cli) -> String {
     }
 }
 
+/// One line of `install-hook` output describing what happened for one target.
+fn install_line(label: &str, path: &std::path::Path, outcome: hook::Outcome) -> String {
+    match outcome {
+        hook::Outcome::Installed { backup } => {
+            let b = match backup {
+                Some(p) => format!(" (backup: {})", p.display()),
+                None => " (new file)".to_string(),
+            };
+            format!("installed wip hook ({label}) in {}{}\n", path.display(), b)
+        }
+        hook::Outcome::AlreadyPresent => {
+            format!(
+                "wip hook ({label}) already present in {} (no change)\n",
+                path.display()
+            )
+        }
+    }
+}
+
 fn run() -> Result<String, String> {
     let args = cli::Cli::parse();
     match &args.command {
@@ -109,24 +128,22 @@ fn run() -> Result<String, String> {
             if *print {
                 Ok(hook::snippet(&exe))
             } else {
-                let path = hook::default_settings_path();
-                match hook::install(&path, &exe)? {
-                    hook::Outcome::Installed { backup } => {
-                        let b = match backup {
-                            Some(p) => format!(" (backup: {})", p.display()),
-                            None => " (new file)".to_string(),
-                        };
-                        Ok(format!(
-                            "installed wip SessionStart hook in {}{}\n",
-                            path.display(),
-                            b
-                        ))
-                    }
-                    hook::Outcome::AlreadyPresent => Ok(format!(
-                        "wip hook already present in {} (no change)\n",
-                        path.display()
-                    )),
-                }
+                let claude_path = hook::default_settings_path();
+                let codex_path = hook::codex_hooks_path();
+                let mut out = String::new();
+                out.push_str(&install_line(
+                    "Claude",
+                    &claude_path,
+                    hook::install(&claude_path, &exe)?,
+                ));
+                out.push_str(&install_line(
+                    "Codex",
+                    &codex_path,
+                    hook::install_codex(&codex_path, &exe)?,
+                ));
+                out.push_str(&hook::codex_trust_notice(&codex_path));
+                out.push('\n');
+                Ok(out)
             }
         }
         Some(cli::Command::InstallSkill) => {

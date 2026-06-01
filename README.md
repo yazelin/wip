@@ -76,14 +76,21 @@ Let Claude Code load your cross-repo status automatically at the start of every
 session:
 
 ```bash
-wip install-hook          # idempotently adds a SessionStart hook to ~/.claude/settings.json
-wip install-hook --print  # or: print the snippet to add manually, change nothing
+wip install-hook          # adds a SessionStart hook to ~/.claude/settings.json AND ~/.codex/hooks.json
+wip install-hook --print  # or: print the snippets to add manually, change nothing
 ```
 
-`install-hook` backs up `settings.json` to `settings.json.bak` first, skips if a
-wip hook is already present, and preserves your other settings and hooks. The
-hook runs `wip hook`, which prints the board as markdown with `gh` skipped (no
-network, fast session starts) and stays silent if no repos are configured.
+`install-hook` installs into **both Claude Code and Codex** (idempotent): it backs
+up each file (`.bak`) first, skips if a wip hook is already present, creates the
+`~/.claude` / `~/.codex` dirs if missing, and preserves your other settings and
+hooks. The hook runs `wip hook`, which prints the board as markdown with `gh`
+skipped (no network, fast session starts) and stays silent if no repos are
+configured.
+
+> **Codex needs one manual step:** Codex skips untrusted hooks, so after
+> `install-hook` run `/hooks` once in an interactive Codex session to trust the
+> entry (re-trust if the hook command ever changes). `install-hook` prints this
+> reminder. `--dangerously-bypass-hook-trust` does **not** cover a new hook.
 
 ### As a skill (Claude + Codex)
 
