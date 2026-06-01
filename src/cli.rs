@@ -26,6 +26,10 @@ pub struct Cli {
     /// gh binary to use
     #[arg(long, default_value = "gh")]
     pub gh_bin: String,
+
+    /// Skip gh entirely (no network) for a faster board
+    #[arg(long)]
+    pub no_gh: bool,
 }
 
 #[derive(Subcommand, Debug)]

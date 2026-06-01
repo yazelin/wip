@@ -49,17 +49,22 @@ fn resolve_repo(name: &str, args: &cli::Cli) -> Result<PathBuf, String> {
         .ok_or_else(|| format!("repo '{name}' not found in config {}", cfg_path.display()))
 }
 
-fn board(args: &cli::Cli) -> Result<String, String> {
+fn collect_sorted(args: &cli::Cli, use_gh: bool) -> Result<Vec<model::RepoStatus>, String> {
     let repos = resolve_repos(args)?;
     let gh_bin = args.gh_bin.clone();
     let mut statuses: Vec<model::RepoStatus> = thread::scope(|s| {
         let handles: Vec<_> = repos
             .iter()
-            .map(|r| s.spawn(|| collector::collect(r, &gh_bin, true)))
+            .map(|r| s.spawn(|| collector::collect(r, &gh_bin, use_gh)))
             .collect();
         handles.into_iter().map(|h| h.join().unwrap()).collect()
     });
     statuses.sort_by(|a, b| b.commit_ts.cmp(&a.commit_ts));
+    Ok(statuses)
+}
+
+fn board(args: &cli::Cli) -> Result<String, String> {
+    let statuses = collect_sorted(args, !args.no_gh)?;
     Ok(if args.json {
         render::json(&statuses)
     } else if args.md {
