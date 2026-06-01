@@ -47,6 +47,15 @@ pub fn markdown(statuses: &[RepoStatus]) -> String {
             let first = p.lines().next().unwrap_or("");
             s.push_str(&format!("- progress: {first}\n"));
         }
+        if !r.next_actions.is_empty() {
+            s.push_str("- next:\n");
+            for (i, t) in r.next_actions.iter().enumerate() {
+                s.push_str(&format!("  {}. {}\n", i + 1, t));
+            }
+        }
+        if !r.planning_docs.is_empty() {
+            s.push_str(&format!("- see: {}\n", r.planning_docs.join(", ")));
+        }
         s.push('\n');
     }
     s
@@ -96,7 +105,20 @@ pub fn term(statuses: &[RepoStatus]) -> String {
             Some(p) => format!("   progress: {}", p.lines().next().unwrap_or("")),
             None => String::new(),
         };
-        s.push_str(&format!("  {pr_part}{issue_part}{progress_part}\n\n"));
+        s.push_str(&format!("  {pr_part}{issue_part}{progress_part}\n"));
+        if !r.next_actions.is_empty() {
+            let items: Vec<String> = r
+                .next_actions
+                .iter()
+                .enumerate()
+                .map(|(i, t)| format!("{}. {}", i + 1, t))
+                .collect();
+            s.push_str(&format!("  next: {}\n", items.join("   ")));
+        }
+        if !r.planning_docs.is_empty() {
+            s.push_str(&format!("  see: {}\n", r.planning_docs.join(", ")));
+        }
+        s.push('\n');
     }
     s
 }
@@ -153,5 +175,51 @@ mod tests {
         assert!(out.contains("2 dirty"));
         assert!(out.contains("PR: -")); // gh unavailable in sample
         assert!(!out.contains('\u{26A0}')); // no emoji
+    }
+
+    fn sample_with_extras() -> RepoStatus {
+        let mut r = sample();
+        r.next_actions = vec!["do A".into(), "do B".into()];
+        r.planning_docs = vec!["ROADMAP.md".into()];
+        r
+    }
+
+    #[test]
+    fn term_renders_next_actions_numbered() {
+        let out = term(&[sample_with_extras()]);
+        assert!(out.contains("next: 1. do A   2. do B"));
+    }
+
+    #[test]
+    fn term_renders_see_line() {
+        let out = term(&[sample_with_extras()]);
+        assert!(out.contains("see: ROADMAP.md"));
+    }
+
+    #[test]
+    fn term_omits_next_and_see_when_empty() {
+        let out = term(&[sample()]);
+        assert!(!out.contains("next:"));
+        assert!(!out.contains("see:"));
+    }
+
+    #[test]
+    fn markdown_renders_next_actions_numbered() {
+        let out = markdown(&[sample_with_extras()]);
+        assert!(out.contains("- next:"));
+        assert!(out.contains("1. do A"));
+        assert!(out.contains("2. do B"));
+    }
+
+    #[test]
+    fn markdown_renders_see_line() {
+        let out = markdown(&[sample_with_extras()]);
+        assert!(out.contains("- see: ROADMAP.md"));
+    }
+
+    #[test]
+    fn markdown_omits_see_when_empty() {
+        let out = markdown(&[sample()]);
+        assert!(!out.contains("- see:"));
     }
 }
