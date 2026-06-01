@@ -9,6 +9,7 @@ mod next;
 mod planning;
 mod progress;
 mod render;
+mod skill;
 
 use clap::Parser;
 use std::path::PathBuf;
@@ -127,6 +128,15 @@ fn run() -> Result<String, String> {
                     )),
                 }
             }
+        }
+        Some(cli::Command::InstallSkill) => {
+            let home = skill::default_home()?;
+            let written = skill::install(&home)?;
+            let lines: String = written
+                .iter()
+                .map(|p| format!("  {}\n", p.display()))
+                .collect();
+            Ok(format!("installed wip skill:\n{lines}"))
         }
         None => board(&args),
     }
