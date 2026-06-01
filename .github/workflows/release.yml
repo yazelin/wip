@@ -1,0 +1,52 @@
+name: Release
+
+# Tag-triggered release: builds Linux + Windows binaries, archives each, and
+# attaches them to a DRAFT GitHub Release (review, then publish manually).
+# No macOS (private repo cost). Trigger:
+#   git tag v0.1.0 && git push origin v0.1.0
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu-22.04
+            name: linux-x86_64
+          - platform: windows-latest
+            name: windows-x86_64
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.name }}
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: tar czf "wip-${{ github.ref_name }}-${{ matrix.name }}.tar.gz" -C target/release wip
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path target\release\wip.exe -DestinationPath "wip-${{ github.ref_name }}-${{ matrix.name }}.zip"
+
+      - name: Upload to draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: wip-${{ github.ref_name }}-*
+          draft: true
+          generate_release_notes: true
