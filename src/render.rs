@@ -52,6 +52,55 @@ pub fn markdown(statuses: &[RepoStatus]) -> String {
     s
 }
 
+/// Human-facing terminal output. ASCII only, no emoji. Indented blocks.
+pub fn term(statuses: &[RepoStatus]) -> String {
+    let mut s = format!("wip - {} repos (recent first)\n\n", statuses.len());
+    for r in statuses {
+        if let Some(e) = &r.error {
+            s.push_str(&format!("{}  [error: {}]\n\n", r.name, e));
+            continue;
+        }
+        s.push_str(&format!("{}  {}\n", r.name, r.branch));
+        if let Some(c) = &r.last_commit {
+            let mut line = format!("  last {}  \"{}\"", c.rel_time, c.message);
+            let mut flags = Vec::new();
+            if r.dirty_files > 0 {
+                flags.push(format!("{} dirty", r.dirty_files));
+            }
+            if r.unpushed > 0 {
+                flags.push(format!("{} unpushed", r.unpushed));
+            }
+            if !flags.is_empty() {
+                line.push_str(&format!("  [{}]", flags.join(", ")));
+            }
+            s.push_str(&line);
+            s.push('\n');
+        }
+        let pr_part = if !r.gh_available {
+            "PR: -".to_string()
+        } else if r.open_prs.is_empty() {
+            "PR: none".to_string()
+        } else {
+            let list: Vec<String> = r
+                .open_prs
+                .iter()
+                .map(|p| format!("#{}", p.number))
+                .collect();
+            format!("PR: {}", list.join(" "))
+        };
+        let issue_part = match r.open_issues {
+            Some(i) => format!("   issues: {i}"),
+            None => String::new(),
+        };
+        let progress_part = match &r.progress_tail {
+            Some(p) => format!("   progress: {}", p.lines().next().unwrap_or("")),
+            None => String::new(),
+        };
+        s.push_str(&format!("  {pr_part}{issue_part}{progress_part}\n\n"));
+    }
+    s
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -94,5 +143,15 @@ mod tests {
         // no emoji: assert the warn/check symbols are absent
         assert!(!out.contains('\u{26A0}')); // no WARNING SIGN
         assert!(!out.contains('\u{2713}')); // no CHECK MARK
+    }
+
+    #[test]
+    fn term_renders_name_and_status() {
+        let out = term(&[sample()]);
+        assert!(out.contains("demo  main"));
+        assert!(out.contains("\"did thing\""));
+        assert!(out.contains("2 dirty"));
+        assert!(out.contains("PR: -")); // gh unavailable in sample
+        assert!(!out.contains('\u{26A0}')); // no emoji
     }
 }
