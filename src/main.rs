@@ -4,6 +4,7 @@ mod config;
 mod gh;
 mod git;
 mod model;
+mod next;
 mod progress;
 mod render;
 
