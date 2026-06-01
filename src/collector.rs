@@ -1,5 +1,5 @@
 use crate::model::{LastCommit, RepoStatus};
-use crate::{gh, git, progress};
+use crate::{gh, git, next, planning, progress};
 use std::path::Path;
 
 pub fn collect(repo: &Path, gh_bin: &str) -> RepoStatus {
@@ -39,8 +39,8 @@ pub fn collect(repo: &Path, gh_bin: &str) -> RepoStatus {
         open_issues: gh_info.open_issues,
         gh_available: gh_info.available,
         progress_tail: progress::tail(repo),
-        next_actions: vec![],  // v2
-        planning_docs: vec![], // v2
+        next_actions: next::read_open(repo),
+        planning_docs: planning::detect(repo),
         commit_ts,
         error: None,
     }
@@ -88,5 +88,15 @@ mod tests {
         let d = TempDir::new().unwrap();
         let s = collect(d.path(), "wip-no-such-gh-binary-xyz");
         assert_eq!(s.error.as_deref(), Some("not a git repo"));
+    }
+
+    #[test]
+    fn collects_next_actions_and_planning_docs() {
+        let d = init_repo();
+        std::fs::write(d.path().join("NEXT.md"), "- [ ] ship v2\n- [x] done\n").unwrap();
+        std::fs::write(d.path().join("ROADMAP.md"), "# roadmap\n").unwrap();
+        let s = collect(d.path(), "wip-no-such-gh-binary-xyz");
+        assert_eq!(s.next_actions, vec!["ship v2".to_string()]);
+        assert_eq!(s.planning_docs, vec!["ROADMAP.md".to_string()]);
     }
 }
