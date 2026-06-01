@@ -25,8 +25,9 @@ pub struct RepoStatus {
     pub open_issues: Option<u32>,
     pub gh_available: bool,
     pub progress_tail: Option<String>,
-    pub next_actions: Vec<String>, // v2: filled from exchange; always empty in v1
-    pub commit_ts: i64,            // committer unix time, for sorting
+    pub next_actions: Vec<String>,  // v2: open items from <repo>/NEXT.md
+    pub planning_docs: Vec<String>, // v2: detected planning files (roadmap/TODO/...), pointers only
+    pub commit_ts: i64,             // committer unix time, for sorting
     pub error: Option<String>,
 }
 

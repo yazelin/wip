@@ -39,7 +39,8 @@ pub fn collect(repo: &Path, gh_bin: &str) -> RepoStatus {
         open_issues: gh_info.open_issues,
         gh_available: gh_info.available,
         progress_tail: progress::tail(repo),
-        next_actions: vec![], // v2
+        next_actions: vec![],  // v2
+        planning_docs: vec![], // v2
         commit_ts,
         error: None,
     }

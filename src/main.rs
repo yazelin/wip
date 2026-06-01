@@ -5,6 +5,7 @@ mod gh;
 mod git;
 mod model;
 mod next;
+mod planning;
 mod progress;
 mod render;
 
