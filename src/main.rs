@@ -3,6 +3,7 @@ mod collector;
 mod config;
 mod gh;
 mod git;
+mod hook;
 mod model;
 mod next;
 mod planning;
