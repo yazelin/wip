@@ -21,6 +21,17 @@ pub struct GhInfo {
     pub open_issues: Option<u32>,
 }
 
+impl GhInfo {
+    /// The degraded result used when gh is unavailable or intentionally skipped.
+    pub fn unavailable() -> GhInfo {
+        GhInfo {
+            available: false,
+            prs: vec![],
+            open_issues: None,
+        }
+    }
+}
+
 fn gh_stdout(repo: &Path, gh_bin: &str, args: &[&str]) -> Option<String> {
     let out = Command::new(gh_bin)
         .current_dir(repo)
@@ -53,11 +64,7 @@ pub fn collect(repo: &Path, gh_bin: &str) -> GhInfo {
                 open_issues: Some(issues.len() as u32),
             }
         }
-        _ => GhInfo {
-            available: false,
-            prs: vec![],
-            open_issues: None,
-        },
+        _ => GhInfo::unavailable(),
     }
 }
 
@@ -72,5 +79,13 @@ mod tests {
         assert!(!info.available);
         assert!(info.prs.is_empty());
         assert!(info.open_issues.is_none());
+    }
+
+    #[test]
+    fn unavailable_constructor() {
+        let g = GhInfo::unavailable();
+        assert!(!g.available);
+        assert!(g.prs.is_empty());
+        assert!(g.open_issues.is_none());
     }
 }
