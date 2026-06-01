@@ -7,10 +7,35 @@ terminal table, agents run `wip --md` and ingest the markdown.
 
 ## Install
 
+### From a release (no Rust needed)
+
+Download the archive for your OS from the [Releases](https://github.com/yazelin/wip/releases)
+page, extract the `wip` binary, and put it on your PATH:
+
 ```bash
-cargo install --path .          # installs `wip` into ~/.cargo/bin
+# Linux x86_64
+tar xzf wip-*-linux-x86_64.tar.gz
+install -m 755 wip ~/.local/bin/wip       # ensure ~/.local/bin is on PATH
+
+# then point it at your repos
 mkdir -p ~/.config/wip
-cp repos.example.toml ~/.config/wip/repos.toml   # then edit the list
+cp repos.example.toml ~/.config/wip/repos.toml   # edit the list
+
+# optional: auto-load status into Claude Code at session start
+wip install-hook
+```
+
+Windows: unzip `wip-*-windows-x86_64.zip` and put `wip.exe` somewhere on your PATH.
+
+`wip install-hook` records the absolute path of whichever `wip` binary you ran it
+from, so the release binary you place on PATH is exactly the one the hook invokes.
+
+### From source
+
+```bash
+cargo install --git https://github.com/yazelin/wip   # or: cargo install --path .
+mkdir -p ~/.config/wip
+cp repos.example.toml ~/.config/wip/repos.toml
 ```
 
 ## Usage
