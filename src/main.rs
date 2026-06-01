@@ -31,11 +31,26 @@ fn resolve_repos(args: &cli::Cli) -> Result<Vec<PathBuf>, String> {
     })
 }
 
-fn run() -> Result<String, String> {
-    let args = cli::Cli::parse();
-    let repos = resolve_repos(&args)?;
+/// Resolve a `<repo>` argument to a path: an existing directory is used directly,
+/// otherwise match by basename against the configured repo list.
+fn resolve_repo(name: &str, args: &cli::Cli) -> Result<PathBuf, String> {
+    let direct = PathBuf::from(name);
+    if direct.is_dir() {
+        return Ok(direct);
+    }
+    let cfg_path = args
+        .config
+        .clone()
+        .unwrap_or_else(config::default_config_path);
+    let repos = config::load_from_file(&cfg_path)?;
+    repos
+        .into_iter()
+        .find(|r| r.file_name().and_then(|s| s.to_str()) == Some(name))
+        .ok_or_else(|| format!("repo '{name}' not found in config {}", cfg_path.display()))
+}
 
-    // Collect repos in parallel; git+gh subprocesses dominate wall time.
+fn board(args: &cli::Cli) -> Result<String, String> {
+    let repos = resolve_repos(args)?;
     let gh_bin = args.gh_bin.clone();
     let mut statuses: Vec<model::RepoStatus> = thread::scope(|s| {
         let handles: Vec<_> = repos
@@ -44,18 +59,31 @@ fn run() -> Result<String, String> {
             .collect();
         handles.into_iter().map(|h| h.join().unwrap()).collect()
     });
-
-    // Most recently committed first; error/empty repos (commit_ts 0) sink to bottom.
     statuses.sort_by(|a, b| b.commit_ts.cmp(&a.commit_ts));
-
-    let out = if args.json {
+    Ok(if args.json {
         render::json(&statuses)
     } else if args.md {
         render::markdown(&statuses)
     } else {
         render::term(&statuses)
-    };
-    Ok(out)
+    })
+}
+
+fn run() -> Result<String, String> {
+    let args = cli::Cli::parse();
+    match &args.command {
+        Some(cli::Command::Next { repo, text }) => {
+            let path = resolve_repo(repo, &args)?;
+            next::add(&path, text).map_err(|e| format!("cannot write NEXT.md: {e}"))?;
+            Ok(format!("added to {}/NEXT.md: {text}\n", path.display()))
+        }
+        Some(cli::Command::Done { repo, n }) => {
+            let path = resolve_repo(repo, &args)?;
+            let done = next::mark_done(&path, *n)?;
+            Ok(format!("done in {}: {done}\n", path.display()))
+        }
+        None => board(&args),
+    }
 }
 
 fn main() -> ExitCode {
