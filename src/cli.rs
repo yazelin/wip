@@ -56,4 +56,6 @@ pub enum Command {
         #[arg(long)]
         print: bool,
     },
+    /// Install the wip skill into ~/.claude/skills and ~/.codex/skills (idempotent)
+    InstallSkill,
 }

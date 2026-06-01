@@ -85,6 +85,20 @@ wip hook is already present, and preserves your other settings and hooks. The
 hook runs `wip hook`, which prints the board as markdown with `gh` skipped (no
 network, fast session starts) and stays silent if no repos are configured.
 
+### As a skill (Claude + Codex)
+
+The hook pushes status passively at session start. To also teach agents wip's
+command surface on demand — and to cover Codex, which the hook doesn't reach —
+install wip as a skill:
+
+```bash
+wip install-skill   # writes ~/.claude/skills/wip/SKILL.md and ~/.codex/skills/wip/SKILL.md
+```
+
+The skill definition is embedded in the binary (no repo needed at runtime) and
+install is idempotent. Agents that read it learn to run `wip --md` for a fresh
+snapshot and `wip next` / `wip done` to manage a repo's NEXT.md.
+
 `wip --no-gh` is also available directly for a fast, network-free board.
 
 ## Roadmap
