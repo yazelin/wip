@@ -2,7 +2,7 @@ use crate::model::{LastCommit, RepoStatus};
 use crate::{gh, git, next, planning, progress};
 use std::path::Path;
 
-pub fn collect(repo: &Path, gh_bin: &str) -> RepoStatus {
+pub fn collect(repo: &Path, gh_bin: &str, use_gh: bool) -> RepoStatus {
     let name = repo
         .file_name()
         .map(|s| s.to_string_lossy().into_owned())
@@ -26,7 +26,11 @@ pub fn collect(repo: &Path, gh_bin: &str) -> RepoStatus {
         sha: c.sha,
     });
 
-    let gh_info = gh::collect(repo, gh_bin);
+    let gh_info = if use_gh {
+        gh::collect(repo, gh_bin)
+    } else {
+        gh::GhInfo::unavailable()
+    };
 
     RepoStatus {
         name,
@@ -74,7 +78,7 @@ mod tests {
     #[test]
     fn collects_git_repo_with_gh_unavailable() {
         let d = init_repo();
-        let s = collect(d.path(), "wip-no-such-gh-binary-xyz");
+        let s = collect(d.path(), "wip-no-such-gh-binary-xyz", true);
         assert_eq!(s.branch, "main");
         assert!(s.error.is_none());
         assert!(!s.gh_available);
@@ -86,7 +90,7 @@ mod tests {
     #[test]
     fn non_git_dir_yields_error() {
         let d = TempDir::new().unwrap();
-        let s = collect(d.path(), "wip-no-such-gh-binary-xyz");
+        let s = collect(d.path(), "wip-no-such-gh-binary-xyz", true);
         assert_eq!(s.error.as_deref(), Some("not a git repo"));
     }
 
@@ -95,8 +99,18 @@ mod tests {
         let d = init_repo();
         std::fs::write(d.path().join("NEXT.md"), "- [ ] ship v2\n- [x] done\n").unwrap();
         std::fs::write(d.path().join("ROADMAP.md"), "# roadmap\n").unwrap();
-        let s = collect(d.path(), "wip-no-such-gh-binary-xyz");
+        let s = collect(d.path(), "wip-no-such-gh-binary-xyz", true);
         assert_eq!(s.next_actions, vec!["ship v2".to_string()]);
         assert_eq!(s.planning_docs, vec!["ROADMAP.md".to_string()]);
+    }
+
+    #[test]
+    fn use_gh_false_skips_gh() {
+        let d = init_repo();
+        // Even passing a real "gh" name, use_gh=false must not consult gh.
+        let s = collect(d.path(), "gh", false);
+        assert!(!s.gh_available);
+        assert!(s.open_prs.is_empty());
+        assert!(s.open_issues.is_none());
     }
 }

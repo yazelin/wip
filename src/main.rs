@@ -55,7 +55,7 @@ fn board(args: &cli::Cli) -> Result<String, String> {
     let mut statuses: Vec<model::RepoStatus> = thread::scope(|s| {
         let handles: Vec<_> = repos
             .iter()
-            .map(|r| s.spawn(|| collector::collect(r, &gh_bin)))
+            .map(|r| s.spawn(|| collector::collect(r, &gh_bin, true)))
             .collect();
         handles.into_iter().map(|h| h.join().unwrap()).collect()
     });
