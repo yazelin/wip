@@ -13,12 +13,18 @@ pub fn default_settings_path() -> PathBuf {
     PathBuf::from(home).join(".claude/settings.json")
 }
 
+/// Path to Codex's hooks file: ~/.codex/hooks.json
+pub fn codex_hooks_path() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_default();
+    PathBuf::from(home).join(".codex/hooks.json")
+}
+
 /// The command string the hook runs: the absolute wip binary + ` hook`.
 pub fn hook_command(exe: &Path) -> String {
     format!("\"{}\" hook", exe.display())
 }
 
-/// A SessionStart entry (matcher "startup") that runs `wip hook`.
+/// Claude Code SessionStart entry (matcher "startup") that runs `wip hook`.
 fn hook_entry(exe: &Path) -> Value {
     json!({
         "matcher": "startup",
@@ -26,12 +32,24 @@ fn hook_entry(exe: &Path) -> Value {
     })
 }
 
-/// Human-pasteable snippet for `--print`.
+/// Codex SessionStart entry. Same hooks.json shape as Claude but Codex
+/// SessionStart entries carry no `matcher` (cf. the format AgentPulse writes).
+fn codex_hook_entry(exe: &Path) -> Value {
+    json!({
+        "hooks": [{ "type": "command", "command": hook_command(exe) }]
+    })
+}
+
+/// Human-pasteable snippets for `--print` (both Claude and Codex).
 pub fn snippet(exe: &Path) -> String {
     format!(
-        "Add this entry to hooks.SessionStart in {}:\n\n{}\n",
+        "Add this entry to hooks.SessionStart in {}:\n\n{}\n\n\
+         And this entry to hooks.SessionStart in {} (Codex), then run `/hooks` \
+         once in an interactive Codex session to trust it:\n\n{}\n",
         default_settings_path().display(),
-        serde_json::to_string_pretty(&hook_entry(exe)).unwrap()
+        serde_json::to_string_pretty(&hook_entry(exe)).unwrap(),
+        codex_hooks_path().display(),
+        serde_json::to_string_pretty(&codex_hook_entry(exe)).unwrap()
     )
 }
 
@@ -72,9 +90,32 @@ fn already_installed(root: &Value, exe: &Path) -> bool {
     false
 }
 
-/// Idempotently add a SessionStart hook to `settings_path`. Backs the file up
-/// (`.json.bak`) before modifying. Preserves all other keys and hooks.
+/// Idempotently add the Claude Code SessionStart hook to `settings_path`.
 pub fn install(settings_path: &Path, exe: &Path) -> Result<Outcome, String> {
+    install_entry(settings_path, exe, hook_entry(exe))
+}
+
+/// Idempotently add the Codex SessionStart hook to `hooks_path`
+/// (`~/.codex/hooks.json`). Same on-disk mechanics as the Claude install; the
+/// entry just carries no `matcher`. Codex skips untrusted hooks, so the caller
+/// must tell the user to run `/hooks` once — see `codex_trust_notice`.
+pub fn install_codex(hooks_path: &Path, exe: &Path) -> Result<Outcome, String> {
+    install_entry(hooks_path, exe, codex_hook_entry(exe))
+}
+
+/// Reminder printed after a Codex install: the hook will not run until trusted.
+pub fn codex_trust_notice(hooks_path: &Path) -> String {
+    format!(
+        "NOTE: Codex skips untrusted hooks. Run `/hooks` once in an interactive \
+         Codex session to trust the entry in {} (re-trust if the command ever \
+         changes). `--dangerously-bypass-hook-trust` does NOT cover a new hook.",
+        hooks_path.display()
+    )
+}
+
+/// Idempotently add a SessionStart `entry` to `settings_path`. Backs the file up
+/// (`.json.bak`) before modifying. Preserves all other keys and hooks.
+fn install_entry(settings_path: &Path, exe: &Path, entry: Value) -> Result<Outcome, String> {
     let existed = settings_path.exists();
     let mut root: Value = if existed {
         let data = std::fs::read_to_string(settings_path)
@@ -114,14 +155,16 @@ pub fn install(settings_path: &Path, exe: &Path) -> Result<Outcome, String> {
     let hooks_obj = hooks
         .as_object_mut()
         .ok_or_else(|| "hooks is not an object".to_string())?;
-    let ss = hooks_obj
-        .entry("SessionStart")
-        .or_insert_with(|| json!([]));
+    let ss = hooks_obj.entry("SessionStart").or_insert_with(|| json!([]));
     let arr = ss
         .as_array_mut()
         .ok_or_else(|| "hooks.SessionStart is not an array".to_string())?;
-    arr.push(hook_entry(exe));
+    arr.push(entry);
 
+    if let Some(parent) = settings_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
+    }
     let out = serde_json::to_string_pretty(&root).map_err(|e| e.to_string())? + "\n";
     std::fs::write(settings_path, out)
         .map_err(|e| format!("cannot write {}: {e}", settings_path.display()))?;
@@ -167,7 +210,9 @@ mod tests {
 
         let bak = p.with_extension("json.bak");
         assert!(bak.exists());
-        assert!(std::fs::read_to_string(&bak).unwrap().contains("other-tool"));
+        assert!(std::fs::read_to_string(&bak)
+            .unwrap()
+            .contains("other-tool"));
 
         let v: Value = serde_json::from_str(&std::fs::read_to_string(&p).unwrap()).unwrap();
         assert_eq!(v["permissions"]["x"], 1);
@@ -202,5 +247,64 @@ mod tests {
         assert!(s.contains("/usr/local/bin/wip"));
         assert!(s.contains("hook"));
         assert!(s.contains("startup"));
+    }
+
+    #[test]
+    fn snippet_mentions_codex_and_trust() {
+        let s = snippet(&exe());
+        assert!(s.contains(".codex/hooks.json"));
+        assert!(s.contains("/hooks"));
+    }
+
+    #[test]
+    fn codex_entry_has_no_matcher() {
+        let e = codex_hook_entry(&exe());
+        assert!(e.get("matcher").is_none());
+        let cmd = e["hooks"][0]["command"].as_str().unwrap();
+        assert!(cmd.ends_with("\" hook"));
+    }
+
+    #[test]
+    fn install_codex_creates_matcherless_entry() {
+        let d = TempDir::new().unwrap();
+        let p = d.path().join("hooks.json");
+        let outcome = install_codex(&p, &exe()).unwrap();
+        assert!(matches!(outcome, Outcome::Installed { backup: None }));
+        let v: Value = serde_json::from_str(&std::fs::read_to_string(&p).unwrap()).unwrap();
+        let arr = v["hooks"]["SessionStart"].as_array().unwrap();
+        assert_eq!(arr.len(), 1);
+        assert!(arr[0].get("matcher").is_none());
+        assert!(arr[0]["hooks"][0]["command"]
+            .as_str()
+            .unwrap()
+            .ends_with("\" hook"));
+    }
+
+    #[test]
+    fn install_codex_is_idempotent() {
+        let d = TempDir::new().unwrap();
+        let p = d.path().join("hooks.json");
+        std::fs::write(&p, r#"{"hooks":{}}"#).unwrap();
+        install_codex(&p, &exe()).unwrap();
+        let after_first = std::fs::read_to_string(&p).unwrap();
+        let outcome = install_codex(&p, &exe()).unwrap();
+        assert!(matches!(outcome, Outcome::AlreadyPresent));
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), after_first);
+    }
+
+    #[test]
+    fn codex_trust_notice_names_path_and_hooks_cmd() {
+        let n = codex_trust_notice(Path::new("/home/x/.codex/hooks.json"));
+        assert!(n.contains("/home/x/.codex/hooks.json"));
+        assert!(n.contains("/hooks"));
+    }
+
+    #[test]
+    fn install_creates_missing_parent_dir() {
+        // Fresh HOME where ~/.claude (or ~/.codex) does not exist yet.
+        let d = TempDir::new().unwrap();
+        let p = d.path().join(".claude").join("settings.json");
+        assert!(install(&p, &exe()).is_ok());
+        assert!(p.exists());
     }
 }
