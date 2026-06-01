@@ -45,14 +45,32 @@ The board also surfaces a `see:` line listing common planning files it finds in 
 repo root (`ROADMAP.md`, `TODO.md`, `PLAN.md`, `BACKLOG.md`) - filenames only, as a
 pointer to read for deeper context. It does not parse their content.
 
+### Claude Code integration
+
+Let Claude Code load your cross-repo status automatically at the start of every
+session:
+
+```bash
+wip install-hook          # idempotently adds a SessionStart hook to ~/.claude/settings.json
+wip install-hook --print  # or: print the snippet to add manually, change nothing
+```
+
+`install-hook` backs up `settings.json` to `settings.json.bak` first, skips if a
+wip hook is already present, and preserves your other settings and hooks. The
+hook runs `wip hook`, which prints the board as markdown with `gh` skipped (no
+network, fast session starts) and stays silent if no repos are configured.
+
+`wip --no-gh` is also available directly for a fast, network-free board.
+
 ## Roadmap
 
 - **v1 (done):** read-only status across a curated repo list.
 - **v2 (done):** active management - `wip next` / `wip done` manage per-repo
   next-actions in each repo's `NEXT.md`, plus a `see:` pointer to detected planning
   files, all shown on the board.
-- **v3 (planned):** a SessionStart hook so Claude Code auto-runs `wip --md` at the
-  start of a session, plus prebuilt cross-platform binaries on GitHub Releases.
+- **v3a (done):** `wip install-hook` adds a Claude Code SessionStart hook that
+  auto-runs `wip hook` (markdown, `--no-gh`) at session start.
+- **v3b (planned):** prebuilt cross-platform binaries on GitHub Releases + CI.
 
 ## Output has no emoji
 
