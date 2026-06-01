@@ -48,4 +48,12 @@ pub enum Command {
         /// 1-based index among OPEN items, as numbered by the board
         n: usize,
     },
+    /// Print cross-repo status as markdown for a Claude Code SessionStart hook
+    Hook,
+    /// Install a SessionStart hook into ~/.claude/settings.json (idempotent, backs up)
+    InstallHook {
+        /// Print the settings.json snippet instead of editing the file
+        #[arg(long)]
+        print: bool,
+    },
 }

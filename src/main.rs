@@ -75,6 +75,19 @@ fn board(args: &cli::Cli) -> Result<String, String> {
     })
 }
 
+/// Best-effort context for the SessionStart hook: board as markdown, gh skipped,
+/// framed for the agent. Any failure (no config / no repos) yields an empty
+/// string so the hook never pollutes the session with errors.
+fn hook_context(args: &cli::Cli) -> String {
+    match collect_sorted(args, false) {
+        Ok(statuses) if !statuses.is_empty() => format!(
+            "Cross-repo dev status (auto-injected by wip):\n\n{}",
+            render::markdown(&statuses)
+        ),
+        _ => String::new(),
+    }
+}
+
 fn run() -> Result<String, String> {
     let args = cli::Cli::parse();
     match &args.command {
@@ -87,6 +100,33 @@ fn run() -> Result<String, String> {
             let path = resolve_repo(repo, &args)?;
             let done = next::mark_done(&path, *n)?;
             Ok(format!("done in {}: {done}\n", path.display()))
+        }
+        Some(cli::Command::Hook) => Ok(hook_context(&args)),
+        Some(cli::Command::InstallHook { print }) => {
+            let exe =
+                std::env::current_exe().map_err(|e| format!("cannot find wip's own path: {e}"))?;
+            if *print {
+                Ok(hook::snippet(&exe))
+            } else {
+                let path = hook::default_settings_path();
+                match hook::install(&path, &exe)? {
+                    hook::Outcome::Installed { backup } => {
+                        let b = match backup {
+                            Some(p) => format!(" (backup: {})", p.display()),
+                            None => " (new file)".to_string(),
+                        };
+                        Ok(format!(
+                            "installed wip SessionStart hook in {}{}\n",
+                            path.display(),
+                            b
+                        ))
+                    }
+                    hook::Outcome::AlreadyPresent => Ok(format!(
+                        "wip hook already present in {} (no change)\n",
+                        path.display()
+                    )),
+                }
+            }
         }
         None => board(&args),
     }
