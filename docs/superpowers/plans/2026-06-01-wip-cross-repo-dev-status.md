@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** A Rust CLI `wip` that aggregates git state, open GitHub PRs/issues, and `progress.md` tails across a curated list of repos, rendering to terminal / markdown / json so both yazelin and Claude Code consume the same source of truth.
+**Goal:** A Rust CLI `wip` that aggregates git state, open GitHub PRs/issues, and `progress.md` tails across a curated list of repos, rendering to terminal / markdown / json so both a human and Claude Code consume the same source of truth.
 
 **Architecture:** Three independent units behind a thin `main`: `config` (which repos to scan) → `collector` (per-repo git + gh + progress, parallel) → `render` (term/md/json). A shared `model::RepoStatus` is the intermediate contract. Each unit is pure-ish and unit-tested in isolation; gh failures degrade gracefully.
 
@@ -1153,15 +1153,11 @@ git commit -m "feat: wire cli + parallel collect + recent-first sort"
 # Copy to ~/.config/wip/repos.toml and edit.
 # Curated list of repos to track — keep it to what's actively in flight.
 repos = [
-  "~/mori-universe/mori-meeting-recorder",
-  "~/mori-universe/mori-desktop",
-  "~/mori-universe/mori-ear",
-  "~/mori-universe/annuli",
-  "~/agentos",
-  "~/agentos-notebook",
-  "~/smriti",
-  "~/exchange",
-  "~/yazelin.github.io",
+  "~/projects/backend-api",
+  "~/projects/web-app",
+  "~/projects/cli-tool",
+  "~/work/service-a",
+  "~/work/service-b",
 ]
 ```
 
