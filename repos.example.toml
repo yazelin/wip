@@ -1,0 +1,13 @@
+# Copy to ~/.config/wip/repos.toml and edit.
+# Curated list of repos to track - keep it to what's actively in flight.
+repos = [
+  "~/mori-universe/mori-meeting-recorder",
+  "~/mori-universe/mori-desktop",
+  "~/mori-universe/mori-ear",
+  "~/mori-universe/annuli",
+  "~/agentos",
+  "~/agentos-notebook",
+  "~/smriti",
+  "~/exchange",
+  "~/yazelin.github.io",
+]
