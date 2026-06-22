@@ -108,6 +108,51 @@ snapshot and `wip next` / `wip done` to manage a repo's NEXT.md.
 
 `wip --no-gh` is also available directly for a fast, network-free board.
 
+## Web views
+
+Two optional HTML companions for when a terminal table isn't enough. Both open
+straight from disk (`file://`, no server) - just open the file in your browser.
+
+### Status dashboard (`dashboard.py`)
+
+`dashboard.py` runs `wip --json`, inlines the result into a single self-contained
+`~/wip-dashboard.html`, and prints its path. One card per repo, sorted most-recent
+first, with a left color bar by staleness (green < 7d, amber < 30d, grey older,
+red on error) and badges for dirty/unpushed/PR counts. Data is embedded, so it
+works over `file://` with no server or CORS. Re-run to refresh.
+
+```bash
+python3 dashboard.py            # passes --no-gh by default
+python3 dashboard.py            # any extra args are forwarded to `wip --json`
+```
+
+### Relationship graph (DIY)
+
+There's no auto-generated dependency graph: separate repos rarely share code, so a
+useful "how do these relate" picture is hand-curated, not derived. The lazy way is
+a standalone HTML that pulls [Mermaid](https://mermaid.js.org/) from a CDN and
+renders a `flowchart` you edit by hand - group repos into `subgraph` clusters and
+draw only the edges you can vouch for (solid = real link, dashed = planned):
+
+```html
+<pre class="mermaid">
+flowchart TB
+  subgraph PLATFORM
+    platform["platform"]
+  end
+  subgraph APPS
+    appA["app-a"]
+    appB["app-b"]
+  end
+  appA -->|"consumes"| platform
+  appB -.->|"planned"| platform
+</pre>
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({ startOnLoad: true, theme: 'dark' });
+</script>
+```
+
 ## Roadmap
 
 - **v1 (done):** read-only status across a curated repo list.
