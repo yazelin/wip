@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>wip — 一個指令,看完每個 repo 的狀態</title>
+<meta name="description" content="wip 是一個跨 repo 開發狀態 CLI:一個指令列出每個專案的分支、最後 commit、未提交/未推送、開著的 PR。人看表格,AI 讀 markdown,同一份真相。">
+<meta property="og:title" content="wip — cross-repo dev status">
+<meta property="og:description" content="一個指令,看完每個 repo 的狀態。人看表格,AI 讀 markdown。">
+<style>
+  :root{--bg:#0b0e14;--panel:#11151d;--line:#222836;--ink:#d8dee9;--dim:#6b7488;
+        --gold:#e8b64c;--cyan:#40e0d0;--red:#e64a4a;--green:#46c878;--mono:'DejaVu Sans Mono','Noto Sans Mono CJK TC',ui-monospace,monospace}
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:'Noto Sans TC',system-ui,-apple-system,sans-serif;line-height:1.7;font-size:17px}
+  a{color:var(--cyan);text-decoration:none} a:hover{text-decoration:underline}
+  .wrap{max-width:860px;margin:0 auto;padding:0 22px}
+  header{position:sticky;top:0;background:rgba(11,14,20,.9);backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line);z-index:5}
+  header .wrap{display:flex;align-items:center;justify-content:space-between;height:56px}
+  .brand{font-family:var(--mono);font-weight:700}.brand b{color:var(--gold)}
+  .nav a{color:var(--dim);margin-left:18px;font-size:15px}
+  .hero{text-align:center;padding:74px 0 40px}
+  .hero .prompt{font-family:var(--mono);color:var(--gold);font-size:15px;letter-spacing:2px}
+  .hero h1{font-size:52px;margin:.2em 0 .1em;font-weight:800}
+  .hero .tag{font-size:22px;color:var(--dim);margin:0 0 26px}
+  .cta{display:inline-block;padding:11px 22px;border-radius:8px;font-weight:700;margin:6px}
+  .cta.gold{background:var(--gold);color:#0b0e14}.cta.ghost{border:1px solid var(--line);color:var(--ink)}
+  .videobox{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#000;margin:14px 0 6px}
+  .videobox video{display:block;width:100%}
+  .cap{color:var(--dim);font-size:14px;text-align:center;margin-bottom:36px}
+  section{padding:30px 0;border-top:1px solid var(--line)}
+  h2{font-size:26px;margin:0 0 .5em}.lead{color:var(--dim)}
+  pre{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px;overflow:auto;
+    font-family:var(--mono);font-size:14.5px;line-height:1.6;color:var(--ink)}
+  code{font-family:var(--mono);background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-size:.9em}
+  pre code{background:none;border:0;padding:0}
+  .k{color:var(--gold)}.c{color:var(--cyan)}.d{color:var(--dim)}.r{color:var(--red)}.g{color:var(--green)}
+  table{width:100%;border-collapse:collapse;margin:8px 0}
+  td,th{border:1px solid var(--line);padding:9px 12px;text-align:left;vertical-align:top}
+  th{color:var(--gold);font-weight:700}td code{white-space:nowrap}
+  .why{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .why .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+  .why .card b{color:var(--gold)}
+  footer{color:var(--dim);text-align:center;padding:40px 0;border-top:1px solid var(--line);font-size:14px}
+  @media(max-width:640px){.hero h1{font-size:38px}.why{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <span class="brand">$ <b>wip</b></span>
+  <nav class="nav"><a href="#why">為什麼</a><a href="#install">安裝</a><a href="#commands">指令</a><a href="#ai">AI 整合</a><a href="https://github.com/yazelin/wip">GitHub</a></nav>
+</div></header>
+
+<div class="wrap">
+  <div class="hero">
+    <div class="prompt">CROSS-REPO DEV STATUS</div>
+    <h1>一個指令,看完每個 repo</h1>
+    <p class="tag">分支、最後 commit、未提交 / 未推送、開著的 PR —— 一次列出來。</p>
+    <a class="cta gold" href="#install">安裝</a>
+    <a class="cta ghost" href="https://github.com/yazelin/wip">GitHub</a>
+  </div>
+
+  <div class="videobox">
+    <video controls preload="metadata" playsinline poster="">
+      <source src="assets/wip-tutorial.mp4" type="video/mp4">
+    </video>
+  </div>
+  <p class="cap">60 秒看懂 wip 怎麼用</p>
+
+  <section id="why">
+    <h2>為什麼</h2>
+    <p class="lead">手上二十幾個 repo,哪個還沒推、哪個有改動沒存?一個一個 <code>cd</code> 進去 <code>git status</code> 很累,而且你跟 AI 助理看的還不是同一份狀態。</p>
+    <div class="why">
+      <div class="card"><b>人看表格</b><br>跑 <code>wip</code>,終端一張表:每個 repo 的分支、最後 commit、dirty / unpushed、開著的 PR。最近動的排前面。</div>
+      <div class="card"><b>AI 讀 markdown</b><br>跑 <code>wip --md</code>,輸出 markdown 摘要,Claude Code 開場自動讀進去 —— 你跟 AI 看同一份真相。</div>
+    </div>
+  </section>
+
+  <section id="install">
+    <h2>安裝</h2>
+    <p class="lead">兩種方式,都不用一分鐘。</p>
+    <p><b>下載 release(免裝 Rust)</b> —— 到 <a href="https://github.com/yazelin/wip/releases">Releases</a> 抓對應 OS 的壓縮檔:</p>
+<pre><code><span class="d"># Linux x86_64</span>
+tar xzf wip-*-linux-x86_64.tar.gz
+install -m 755 wip ~/.local/bin/wip       <span class="d"># 確認 ~/.local/bin 在 PATH</span>
+
+<span class="d"># 指向你的 repo 清單</span>
+mkdir -p ~/.config/wip
+cp repos.example.toml ~/.config/wip/repos.toml   <span class="d"># 編輯這份清單</span></code></pre>
+    <p>Windows:解壓 <code>wip-*-windows-x86_64.zip</code>,把 <code>wip.exe</code> 放進 PATH。</p>
+    <p><b>從原始碼裝</b>:</p>
+<pre><code>cargo install --git https://github.com/yazelin/wip
+mkdir -p ~/.config/wip
+cp repos.example.toml ~/.config/wip/repos.toml</code></pre>
+  </section>
+
+  <section id="commands">
+    <h2>指令</h2>
+    <table>
+      <tr><th>指令</th><th>做什麼</th></tr>
+      <tr><td><code>wip</code></td><td>終端表格,最近 commit 的 repo 排最前</td></tr>
+      <tr><td><code>wip --md</code></td><td>markdown 摘要(給 Claude Code / SessionStart hook 讀)</td></tr>
+      <tr><td><code>wip --json</code></td><td>結構化輸出</td></tr>
+      <tr><td><code>wip --root ~/dir</code></td><td>臨時掃某資料夾下的所有 git repo(無視設定清單)</td></tr>
+      <tr><td><code>wip --no-gh</code></td><td>跳過 gh(免網路、更快;PR/issue 欄顯示 <code>-</code>)</td></tr>
+      <tr><td><code>wip next &lt;repo&gt; "…"</code></td><td>把待辦寫進該 repo 的 <code>NEXT.md</code></td></tr>
+      <tr><td><code>wip done &lt;repo&gt; 1</code></td><td>把第 1 個未完成待辦打勾</td></tr>
+    </table>
+    <h2 style="font-size:20px;margin-top:26px">讀懂那張表</h2>
+<pre><code><span class="k">$ wip</span>
+<span class="d">wip — 25 repos (recent first)</span>
+
+<b>ai-chant-magic</b>  <span class="c">main</span>
+  <span class="d">36 分鐘前</span>  Merge pull request #74  <span class="r">[3 dirty]</span>
+<b>catime</b>  <span class="c">main</span>
+  <span class="d">3 天前</span>  Update RSS feed  <span class="g">[2 unpushed]</span></code></pre>
+    <ul>
+      <li><span class="c">分支名</span>:目前 checkout 的 branch。</li>
+      <li><span class="r">[N dirty]</span>:有 N 個改動還沒 <code>commit</code>。</li>
+      <li><span class="g">[N unpushed]</span>:commit 了但還沒 <code>push</code>。</li>
+      <li>時間 + 訊息:最後一次 commit。</li>
+      <li>底下若有 <code>see:</code>:偵測到 <code>ROADMAP.md</code> / <code>TODO.md</code> 等規劃檔,列檔名當閱讀指路(不解析內容)。</li>
+    </ul>
+  </section>
+
+  <section id="ai">
+    <h2>Claude Code / AI 整合</h2>
+    <p class="lead">讓 Claude Code(和 Codex)在每次開場自動載入你的跨 repo 狀態:</p>
+<pre><code>wip install-hook          <span class="d"># 裝 SessionStart hook 進 ~/.claude/settings.json 與 ~/.codex/hooks.json</span>
+wip install-hook --print  <span class="d"># 或只印出片段,自己手動加</span></code></pre>
+    <p>裝好後,AI 每次開場就先讀 <code>wip --md</code>,知道你各專案做到哪,不用你再解釋一遍。<code>NEXT.md</code> 跟著 repo 走(git 版控),你的下一步在哪台機都在。</p>
+    <p><b>裝成 skill(Claude + Codex)</b> —— hook 是被動推狀態;想讓 agent「隨時主動」跑 wip、用 next / done,再裝 skill(也補 hook 到不了的 Codex):</p>
+<pre><code>wip install-skill   <span class="d"># 寫 ~/.claude/skills/wip 與 ~/.codex/skills/wip</span></code></pre>
+    <p class="d">Codex 需手動一步:<code>install-hook</code> 後在互動 Codex 跑一次 <code>/hooks</code> 信任該 hook。</p>
+  </section>
+
+  <section id="dashboard">
+    <h2>視覺儀表板 &amp; 關係圖</h2>
+    <p class="lead">終端表格不夠看時,兩個選配 HTML —— 直接開檔(<code>file://</code>,免伺服器)。</p>
+    <p><b>狀態儀表板</b>:<code>dashboard.py</code> 跑 <code>wip --json</code>、把結果內嵌成單一自足的 <code>~/wip-dashboard.html</code>,一 repo 一張卡、依新舊上色(綠 &lt;7 天、黃 &lt;30 天、灰更舊、紅=錯),dirty/unpushed/PR 徽章。資料內嵌,<code>file://</code> 也能開。</p>
+<pre><code>python3 dashboard.py   <span class="d"># 產 ~/wip-dashboard.html(預設帶 --no-gh)</span></code></pre>
+    <p><b>關係圖(DIY)</b>:不自動生(分開的 repo 很少共用碼,硬推的圖沒用)。要的話用一張拉 <a href="https://mermaid.js.org/">Mermaid</a> CDN 的 HTML,手畫 <code>flowchart</code> —— 用 <code>subgraph</code> 分群,只畫你敢背書的連線(實線=真依賴、虛線=規劃)。</p>
+  </section>
+
+  <section id="config">
+    <h2>設定清單</h2>
+    <p class="lead"><code>~/.config/wip/repos.toml</code> 是一份**手選**的追蹤清單 —— 保持在「正在飛的專案」。清單過期(漏了在做的、留著收工的)是它變沒用的頭號原因,記得偶爾整理。</p>
+<pre><code>repos = [
+  "~/project-a",
+  "~/work/project-b",
+]</code></pre>
+    <p>想看「我最近實際碰了啥」而不管清單,直接 <code>wip --root ~</code>。</p>
+  </section>
+</div>
+
+<footer>
+  wip · <a href="https://github.com/yazelin/wip">github.com/yazelin/wip</a> · MIT
+</footer>
+</body>
+</html>
