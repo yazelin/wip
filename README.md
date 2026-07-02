@@ -5,6 +5,8 @@ dirty/unpushed state, open PRs/issues, and the tail of each repo's `progress.md`
 Built so **both you and Claude Code read the same source of truth** - humans get a
 terminal table, agents run `wip --md` and ingest the markdown.
 
+**Manual + 60s video tutorial → https://yazelin.github.io/wip/**
+
 ## Install
 
 ### From a release (no Rust needed)
