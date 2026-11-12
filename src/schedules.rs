@@ -101,7 +101,7 @@ pub fn refresh(repos: &[PathBuf], gh: &impl GhApi, fetched_at: i64) -> ScheduleC
                 continue;
             }
         };
-        let endpoint = format!("repos/{remote}/actions/runs?event=schedule&per_page=30");
+        let endpoint = format!("repos/{remote}/actions/runs?per_page=100");
         match gh.api(repo_path, &endpoint) {
             Ok(body) => match parse_runs(&repo, &body) {
                 Ok(mut workflows) => cache.workflows.append(&mut workflows),
@@ -120,21 +120,33 @@ pub fn parse_runs(repo: &str, raw: &str) -> Result<Vec<WorkflowHealth>, String> 
         .get("workflow_runs")
         .and_then(Value::as_array)
         .ok_or_else(|| "GitHub 回傳內容缺少 workflow_runs 陣列".to_string())?;
-    let mut grouped: BTreeMap<String, Vec<(i64, String)>> = BTreeMap::new();
+    // 依 workflow_id 分組（改名後仍算同一支），名稱取最新一次執行的。
+    // 只收「出現過排程觸發」的 workflow；連敗與最後成功看全部觸發方式
+    // （手動重跑修好了就算修好），間隔只看排程觸發。
+    struct Run {
+        ts: i64,
+        result: String,
+        scheduled: bool,
+        name: String,
+    }
+    let mut grouped: BTreeMap<String, Vec<Run>> = BTreeMap::new();
     for run in runs {
-        let workflow = run
+        let name = run
             .get("workflow_name")
             .or_else(|| run.get("name"))
             .and_then(Value::as_str)
             .filter(|name| !name.is_empty())
-            .map(str::to_string)
-            .or_else(|| run.get("workflow_id").map(|id| format!("workflow-{}", id)))
+            .map(str::to_string);
+        let key = run
+            .get("workflow_id")
+            .map(|id| format!("workflow-{}", id))
+            .or_else(|| name.clone())
             .unwrap_or_else(|| "workflow-unknown".into());
         let timestamp = ["run_started_at", "created_at", "updated_at"]
             .iter()
-            .filter_map(|key| run.get(*key).and_then(Value::as_str))
+            .filter_map(|k| run.get(*k).and_then(Value::as_str))
             .find_map(dates::parse_timestamp);
-        let Some(timestamp) = timestamp else { continue };
+        let Some(ts) = timestamp else { continue };
         let result = run
             .get("conclusion")
             .and_then(Value::as_str)
@@ -142,24 +154,32 @@ pub fn parse_runs(repo: &str, raw: &str) -> Result<Vec<WorkflowHealth>, String> 
             .or_else(|| run.get("status").and_then(Value::as_str))
             .unwrap_or("unknown")
             .to_ascii_lowercase();
-        grouped
-            .entry(workflow)
-            .or_default()
-            .push((timestamp, result));
+        // 沒有 event 欄位時視為排程（相容舊資料與測試）
+        let scheduled = run
+            .get("event")
+            .and_then(Value::as_str)
+            .map(|e| e == "schedule")
+            .unwrap_or(true);
+        grouped.entry(key.clone()).or_default().push(Run {
+            ts,
+            result,
+            scheduled,
+            name: name.unwrap_or(key),
+        });
     }
 
     let mut output = Vec::new();
-    for (workflow, mut runs) in grouped {
-        runs.sort_by(|a, b| b.0.cmp(&a.0));
-        let latest_result = runs.first().map(|run| run.1.clone()).unwrap_or_default();
-        let consecutive_failures = runs.iter().take_while(|run| is_failure(&run.1)).count() as u32;
-        let last_success = runs.iter().find(|run| run.1 == "success").map(|run| run.0);
-        let intervals: Vec<i64> = runs
-            .windows(2)
-            .map(|pair| pair[0].0 - pair[1].0)
-            .filter(|interval| *interval > 0)
-            .collect();
-        let last_run = runs.first().map(|run| run.0).unwrap_or_default();
+    for (_, mut runs) in grouped {
+        if !runs.iter().any(|r| r.scheduled) {
+            continue;
+        }
+        runs.sort_by(|a, b| b.ts.cmp(&a.ts));
+        let workflow = runs[0].name.clone();
+        let latest_result = runs[0].result.clone();
+        let consecutive_failures = runs.iter().take_while(|r| is_failure(&r.result)).count() as u32;
+        let last_success = runs.iter().find(|r| r.result == "success").map(|r| r.ts);
+        let scheduled: Vec<i64> = runs.iter().filter(|r| r.scheduled).map(|r| r.ts).collect();
+        let last_run = scheduled.first().copied().unwrap_or_default();
         output.push(WorkflowHealth {
             repo: repo.to_string(),
             workflow,
@@ -167,10 +187,27 @@ pub fn parse_runs(repo: &str, raw: &str) -> Result<Vec<WorkflowHealth>, String> 
             consecutive_failures,
             last_success,
             last_run,
-            median_interval_seconds: median(intervals),
+            median_interval_seconds: median(burst_gaps(&scheduled)),
         });
     }
     Ok(output)
+}
+
+/// GitHub 排程常在同一段時間連跑好幾次（一天兩三批），
+/// 把相隔不到 3 小時的執行併成一批，間隔只算批與批之間，
+/// 否則中位數會被批內的幾分鐘拉低，正常排程被誤報成沒執行。
+/// `desc` 為新到舊排序的時間戳。
+fn burst_gaps(desc: &[i64]) -> Vec<i64> {
+    const BURST_SECONDS: i64 = 3 * 3600;
+    let mut heads: Vec<i64> = Vec::new(); // 每批最新的一次
+    let mut prev: Option<i64> = None;
+    for &ts in desc {
+        if prev.map(|p| p - ts > BURST_SECONDS).unwrap_or(true) {
+            heads.push(ts);
+        }
+        prev = Some(ts);
+    }
+    heads.windows(2).map(|w| w[0] - w[1]).collect()
 }
 
 fn is_failure(result: &str) -> bool {
@@ -323,6 +360,37 @@ mod tests {
     }
 
     #[test]
+    fn bursts_collapse_so_normal_schedule_is_not_flagged() {
+        // 一天兩批、每批 3 次、批內相隔 30 分鐘
+        let day = 86_400;
+        let mut ts = vec![];
+        for d in 0..3 {
+            for b in [0, 13 * 3600] {
+                for i in 0..3 {
+                    ts.push(100 * day - d * day - b - i * 1800);
+                }
+            }
+        }
+        ts.sort_unstable_by(|a, b| b.cmp(a));
+        let gaps = burst_gaps(&ts);
+        assert!(median(gaps).unwrap() > 3 * 3600);
+    }
+
+    #[test]
+    fn manual_rerun_success_ends_failure_streak_and_rename_stays_one_workflow() {
+        let raw = r#"{"workflow_runs":[
+          {"name":"新名","workflow_id":5,"event":"workflow_dispatch","conclusion":"success","run_started_at":"2026-11-12T00:00:00Z"},
+          {"name":"舊名","workflow_id":5,"event":"schedule","conclusion":"failure","run_started_at":"2026-11-09T00:00:00Z"},
+          {"name":"舊名","workflow_id":5,"event":"schedule","conclusion":"failure","run_started_at":"2026-11-02T00:00:00Z"},
+          {"name":"tests","workflow_id":6,"event":"push","conclusion":"failure","run_started_at":"2026-11-12T00:00:00Z"}
+        ]}"#;
+        let w = parse_runs("demo", raw).unwrap();
+        assert_eq!(w.len(), 1);
+        assert_eq!(w[0].workflow, "新名");
+        assert_eq!(w[0].consecutive_failures, 0);
+    }
+
+    #[test]
     fn reports_missed_expected_run_after_two_intervals() {
         let mut workflow = parse_runs("demo", RUNS).unwrap().remove(0);
         workflow.consecutive_failures = 0;
@@ -362,7 +430,7 @@ mod tests {
         fn api(&self, repo_path: &Path, endpoint: &str) -> Result<String, String> {
             assert_eq!(
                 endpoint,
-                "repos/yazelin/wip/actions/runs?event=schedule&per_page=30"
+                "repos/yazelin/wip/actions/runs?per_page=100"
             );
             if repo_path.file_name().and_then(|s| s.to_str()) == Some("bad") {
                 Err("fake failure".into())
