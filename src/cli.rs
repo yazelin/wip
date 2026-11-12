@@ -2,60 +2,69 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
-#[command(name = "wip", about = "Cross-repo dev status for humans and AI agents")]
+#[command(name = "wip", about = "跨 repo 開發進度摘要")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Command>,
 
-    /// Output markdown (for AI agents to ingest)
+    /// 輸出 Markdown 摘要，供 AI agent 閱讀
     #[arg(long)]
     pub md: bool,
 
-    /// Output json
+    /// 輸出 JSON 資料
     #[arg(long)]
     pub json: bool,
 
-    /// Scan a directory's immediate subdirs for git repos (ignores config)
+    /// 掃描指定目錄的第一層子目錄，尋找 Git repo（忽略設定檔）
     #[arg(long)]
     pub root: Option<PathBuf>,
 
-    /// Config file path (default: ~/.config/wip/repos.toml)
+    /// 設定檔路徑（預設為 ~/.config/wip/repos.toml）
     #[arg(long)]
     pub config: Option<PathBuf>,
 
-    /// gh binary to use
+    /// 指定 gh 執行檔
     #[arg(long, default_value = "gh")]
     pub gh_bin: String,
 
-    /// Skip gh entirely (no network) for a faster board
+    /// 完全略過 gh，不連網以加快輸出
     #[arg(long)]
     pub no_gh: bool,
 }
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
-    /// Add a next-action to <repo>/NEXT.md
+    /// 新增待辦至 <repo>/NEXT.md
     Next {
-        /// Repo name (basename in config) or path to a repo
+        /// 設定檔中的 repo 名稱，或 repo 路徑
         repo: String,
-        /// The next-action text
+        /// 待辦文字
         text: String,
+        /// 到期日，格式為 YYYY-MM-DD
+        #[arg(long)]
+        due: Option<String>,
     },
-    /// Mark the n-th open next-action done in <repo>/NEXT.md
+    /// 將 <repo>/NEXT.md 的第 n 項未完成待辦標記為完成
     Done {
-        /// Repo name (basename in config) or path to a repo
+        /// 設定檔中的 repo 名稱，或 repo 路徑
         repo: String,
-        /// 1-based index among OPEN items, as numbered by the board
+        /// 未完成待辦的序號，從 1 開始
         n: usize,
     },
-    /// Print cross-repo status as markdown for a Claude Code SessionStart hook
+    /// 輸出供 Claude Code SessionStart hook 使用的精簡摘要
     Hook,
-    /// Install a SessionStart hook into ~/.claude/settings.json (idempotent, backs up)
+    /// 查看 GitHub Actions 排程健康快取
+    Schedules {
+        /// 更新所有設定 repo 的排程資料
+        #[arg(long)]
+        refresh: bool,
+    },
+    /// 安裝 SessionStart hook 至 Claude Code 與 Codex 設定
     InstallHook {
-        /// Print the settings.json snippet instead of editing the file
+        /// 只列出設定片段，不修改檔案
         #[arg(long)]
         print: bool,
     },
-    /// Install the wip skill into ~/.claude/skills and ~/.codex/skills (idempotent)
+    /// 安裝 wip skill 至 Claude Code 與 Codex
     InstallSkill,
 }

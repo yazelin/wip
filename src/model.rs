@@ -13,6 +13,12 @@ pub struct OpenPr {
     pub title: String,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct NextAction {
+    pub text: String,
+    pub due: Option<String>,
+}
+
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct RepoStatus {
     pub name: String,
@@ -25,9 +31,10 @@ pub struct RepoStatus {
     pub open_issues: Option<u32>,
     pub gh_available: bool,
     pub progress_tail: Option<String>,
-    pub next_actions: Vec<String>,  // v2: open items from <repo>/NEXT.md
-    pub planning_docs: Vec<String>, // v2: detected planning files (roadmap/TODO/...), pointers only
-    pub commit_ts: i64,             // committer unix time, for sorting
+    pub next_actions: Vec<String>, // v2：<repo>/NEXT.md 中的未完成待辦
+    pub next_action_details: Vec<NextAction>,
+    pub planning_docs: Vec<String>, // v2：偵測到的規劃檔案，只列出路徑
+    pub commit_ts: i64,             // 提交者的 Unix 時間，用於排序
     pub error: Option<String>,
 }
 
