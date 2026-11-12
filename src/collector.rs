@@ -32,6 +32,7 @@ pub fn collect(repo: &Path, gh_bin: &str, use_gh: bool) -> RepoStatus {
         gh::GhInfo::unavailable()
     };
 
+    let next_action_details = next::read_open_items(repo);
     RepoStatus {
         name,
         path,
@@ -44,6 +45,7 @@ pub fn collect(repo: &Path, gh_bin: &str, use_gh: bool) -> RepoStatus {
         gh_available: gh_info.available,
         progress_tail: progress::tail(repo),
         next_actions: next::read_open(repo),
+        next_action_details,
         planning_docs: planning::detect(repo),
         commit_ts,
         error: None,

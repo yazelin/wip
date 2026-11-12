@@ -46,6 +46,8 @@ cp repos.example.toml ~/.config/wip/repos.toml
 wip                 # terminal table, most recently committed repo first
 wip --md            # markdown digest (for Claude Code / SessionStart hook)
 wip --json          # structured output
+wip schedules       # show cached GitHub Actions schedule health
+wip schedules --refresh  # refresh scheduled workflow runs through gh api
 wip --root ~/some/dir   # ad-hoc: scan immediate subdirs for git repos, ignore config
 ```
 
@@ -60,6 +62,7 @@ board shows open items numbered per repo.
 
 ```bash
 wip next <repo> "finish the thing"   # append "- [ ] finish the thing" to <repo>/NEXT.md
+wip next <repo> "ship release" --due 2026-11-20  # add an optional due date
 wip done <repo> 1                    # flip the 1st OPEN item to "- [x]"
 ```
 
@@ -71,6 +74,23 @@ Note: global flags must come before the subcommand, e.g.
 The board also surfaces a `see:` line listing common planning files it finds in a
 repo root (`ROADMAP.md`, `TODO.md`, `PLAN.md`, `BACKLOG.md`) - filenames only, as a
 pointer to read for deeper context. It does not parse their content.
+
+Open items may carry a due date at the end of the line as `（到期 2026-11-20）`
+or `(due: 2026-11-20)`. `wip next --due` writes the latter format. `wip --md`
+and the terminal table show valid dates after their task; `wip --json` preserves
+the existing `next_actions` strings and adds `next_action_details`, whose items
+include `text` and a `due` field (`null` when there is no valid date).
+
+`wip schedules --refresh` reads up to 30 scheduled workflow runs per configured
+GitHub repo through `gh api` and stores the result in `~/.cache/wip/schedules.json`.
+`wip schedules` prints that cache without making network calls. The SessionStart
+hook reads the cache only and flags workflows with two consecutive failures or
+that have missed more than twice their median run interval. Refresh the cache
+regularly; the hook calls out data older than 36 hours.
+
+`wip hook` never calls the network itself. When the schedule cache is missing or
+older than 6 hours it starts `wip schedules --refresh` as a detached background
+process, so the next session sees fresh data.
 
 ### Claude Code integration
 
@@ -85,9 +105,12 @@ wip install-hook --print  # or: print the snippets to add manually, change nothi
 `install-hook` installs into **both Claude Code and Codex** (idempotent): it backs
 up each file (`.bak`) first, skips if a wip hook is already present, creates the
 `~/.claude` / `~/.codex` dirs if missing, and preserves your other settings and
-hooks. The hook runs `wip hook`, which prints the board as markdown with `gh`
-skipped (no network, fast session starts) and stays silent if no repos are
-configured.
+hooks. The hook runs `wip hook`, which prints a compact summary capped at 1,800
+bytes. It puts due and nearly due tasks, unhealthy schedules, and unpushed
+commits first, then lists repos with commits in the last seven days and
+summarizes the remaining repos. It skips `gh`, reads only the local schedule
+cache, and stays silent if no repos are configured. Use `wip --md` for the full
+board.
 
 > **Codex needs one manual step:** Codex skips untrusted hooks, so after
 > `install-hook` run `/hooks` once in an interactive Codex session to trust the

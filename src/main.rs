@@ -1,6 +1,7 @@
 mod cli;
 mod collector;
 mod config;
+mod dates;
 mod gh;
 mod git;
 mod hook;
@@ -9,6 +10,7 @@ mod next;
 mod planning;
 mod progress;
 mod render;
+mod schedules;
 mod skill;
 
 use clap::Parser;
@@ -33,8 +35,7 @@ fn resolve_repos(args: &cli::Cli) -> Result<Vec<PathBuf>, String> {
     })
 }
 
-/// Resolve a `<repo>` argument to a path: an existing directory is used directly,
-/// otherwise match by basename against the configured repo list.
+/// 將 `<repo>` 解析成路徑；若不是現有目錄，就依設定清單中的目錄名稱比對。
 fn resolve_repo(name: &str, args: &cli::Cli) -> Result<PathBuf, String> {
     let direct = PathBuf::from(name);
     if direct.is_dir() {
@@ -76,20 +77,45 @@ fn board(args: &cli::Cli) -> Result<String, String> {
     })
 }
 
-/// Best-effort context for the SessionStart hook: board as markdown, gh skipped,
-/// framed for the agent. Any failure (no config / no repos) yields an empty
-/// string so the hook never pollutes the session with errors.
+/// 排程健康快取超過這個秒數，就在開場時順手在背景更新一次。
+const HOOK_BACKGROUND_REFRESH_AGE_SECONDS: i64 = 6 * 60 * 60;
+
+/// 快取太舊（或還沒有）時，另起一個不等待的行程去更新，下一次開場就會讀到新的。
+/// 開場摘要本身不打網路，也不等這個行程；起不來就靜默略過。
+fn refresh_schedules_in_background(cache: Option<&schedules::ScheduleCache>, now: i64) {
+    let fresh = cache
+        .map(|c| now.saturating_sub(c.fetched_at) <= HOOK_BACKGROUND_REFRESH_AGE_SECONDS)
+        .unwrap_or(false);
+    if fresh || std::env::var_os("WIP_NO_BACKGROUND_REFRESH").is_some() {
+        return;
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        let _ = std::process::Command::new(exe)
+            .args(["schedules", "--refresh"])
+            .env("WIP_NO_BACKGROUND_REFRESH", "1")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn();
+    }
+}
+
+/// 產生 SessionStart hook 的摘要；缺少設定或 repo 時保持靜默。
 fn hook_context(args: &cli::Cli) -> String {
     match collect_sorted(args, false) {
-        Ok(statuses) if !statuses.is_empty() => format!(
-            "Cross-repo dev status (auto-injected by wip):\n\n{}",
-            render::markdown(&statuses)
-        ),
+        Ok(statuses) if !statuses.is_empty() => {
+            let cache = schedules::read_cache(&schedules::default_cache_path())
+                .ok()
+                .flatten();
+            let now = dates::now_unix();
+            refresh_schedules_in_background(cache.as_ref(), now);
+            render::hook_digest(&statuses, cache.as_ref(), now)
+        }
         _ => String::new(),
     }
 }
 
-/// One line of `install-hook` output describing what happened for one target.
+/// 產生一行 `install-hook` 安裝結果。
 fn install_line(label: &str, path: &std::path::Path, outcome: hook::Outcome) -> String {
     match outcome {
         hook::Outcome::Installed { backup } => {
@@ -111,10 +137,19 @@ fn install_line(label: &str, path: &std::path::Path, outcome: hook::Outcome) -> 
 fn run() -> Result<String, String> {
     let args = cli::Cli::parse();
     match &args.command {
-        Some(cli::Command::Next { repo, text }) => {
+        Some(cli::Command::Next { repo, text, due }) => {
+            if let Some(date) = due {
+                if dates::parse_date(date).is_none() {
+                    return Err(format!("到期日格式錯誤：{date}，請用 YYYY-MM-DD"));
+                }
+            }
             let path = resolve_repo(repo, &args)?;
-            next::add(&path, text).map_err(|e| format!("cannot write NEXT.md: {e}"))?;
-            Ok(format!("added to {}/NEXT.md: {text}\n", path.display()))
+            match due.as_deref() {
+                Some(date) => next::add_with_due(&path, text, Some(date)),
+                None => next::add(&path, text),
+            }
+            .map_err(|e| format!("無法寫入 NEXT.md：{e}"))?;
+            Ok(format!("已新增至 {}/NEXT.md：{text}\n", path.display()))
         }
         Some(cli::Command::Done { repo, n }) => {
             let path = resolve_repo(repo, &args)?;
@@ -122,6 +157,24 @@ fn run() -> Result<String, String> {
             Ok(format!("done in {}: {done}\n", path.display()))
         }
         Some(cli::Command::Hook) => Ok(hook_context(&args)),
+        Some(cli::Command::Schedules { refresh }) => {
+            let cache_path = schedules::default_cache_path();
+            if *refresh {
+                let repos = resolve_repos(&args)?;
+                let gh = schedules::CommandGh {
+                    binary: args.gh_bin.clone(),
+                };
+                let cache = schedules::refresh(&repos, &gh, dates::now_unix());
+                schedules::write_cache(&cache_path, &cache)?;
+                Ok(schedules::table(&cache))
+            } else {
+                let cache = schedules::read_cache(&cache_path)?;
+                match cache {
+                    Some(cache) => Ok(schedules::table(&cache)),
+                    None => Ok("尚無排程健康快取，請執行 wip schedules --refresh\n".into()),
+                }
+            }
+        }
         Some(cli::Command::InstallHook { print }) => {
             let exe =
                 std::env::current_exe().map_err(|e| format!("cannot find wip's own path: {e}"))?;
